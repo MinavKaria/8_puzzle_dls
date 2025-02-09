@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>8-Puzzle DLS Tree Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        svg {
+            width: 100%;
+            height: 600px;
+            border: 1px solid black;
+        }
+        .node circle {
+            fill: lightblue;
+            stroke: steelblue;
+            stroke-width: 2px;
+        }
+        .node text {
+            font-size: 12px;
+        }
+        .link {
+            fill: none;
+            stroke: black;
+            stroke-width: 1.5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>8-Puzzle DLS Tree Visualization</h2>
+    <button onclick="startDLS()">Start Depth-Limited Search</button>
+    <h3 id="limit"></h3>
+    <svg id="tree"></svg>
+
+    <script>
+        function print(matrix) {
+            let str = "";
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    str += matrix[i][j] + " ";
+                }
+                str += "\n";
+            }
+            console.log(str);
+            return str;
+        }
+
+        const goalState = [
+            [1, 2, 3],
+            [4, 5, 6],
+            [7, 8, 0]
+        ];
+
+        let initialState = [
+            [1, 2, 3],
+            [4, 0, 6],
+            [7, 5, 8]
+        ];
+
+        const moves = ["UP", "DOWN", "LEFT", "RIGHT"];
+        const dx = [-1, 1, 0, 0];
+        const dy = [0, 0, -1, 1];
+
+        let treeData = { name: "START", children: [] };
+        let treeSvg = d3.select("#tree");
+        let width = window.innerWidth, height = 600;
+        let limitElement = document.getElementById("limit");
+        let treeLayout = d3.tree().size([width - 100, height - 200]);
+        let root;
+
+        function isGoal(state) {
+            return JSON.stringify(state) === JSON.stringify(goalState);
+        }
+
+        function findBlank(state) {
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (state[i][j] === 0) return [i, j];
+                }
+            }
+            return [-1, -1];
+        }
+
+        function copyState(state) {
+            return state.map(row => [...row]);
+        }
+
+        function serializeState(state) {
+            return state.flat().join(",");
+        }
+
+        async function depthLimitedSearch(state, depth, limit, parentNode, visited) {
+            if (depth >= limit) return false;
+
+            let stateKey = serializeState(state);
+            if (visited.has(stateKey)) return false;  
+            visited.add(stateKey); 
+
+            if (isGoal(state)) {
+                parentNode.children.push({ name: "Goal 🎯", children: [] });
+                updateTree();
+                return true;
+            }
+
+            let [x, y] = findBlank(state);
+            for (let i = 0; i < 4; i++) {
+                let newX = x + dx[i], newY = y + dy[i];
+                if (newX >= 0 && newX < 3 && newY >= 0 && newY < 3) {
+                    let newState = copyState(state);
+                    [newState[x][y], newState[newX][newY]] = [newState[newX][newY], newState[x][y]];
+
+                    let moveLabel = moves[i] + " (Depth " + (depth + 1) + ")";
+                    let childNode = { name: print(newState), children: [] };
+                    parentNode.children.push(childNode);
+
+                    updateTree();
+                    await new Promise(res => setTimeout(res, 700));
+
+                    if (await depthLimitedSearch(newState, depth + 1, limit, childNode, visited)) return true;
+                }
+            }
+            return false;
+        }
+
+        async function startDLS() {
+            treeData = { name: "START", children: [] };
+            updateTree();
+
+            for (let limit = 1; limit <= 10; limit++) {
+                limitElement.textContent = `Depth Limit: ${limit}`;
+                console.log(`Trying Depth Limit: ${limit}`);
+                let visited = new Set();  // Reset visited states for each depth iteration
+                treeData.children = [];
+                updateTree();
+                if (await depthLimitedSearch(initialState, 0, limit, treeData, visited)) return;
+            }
+        }
+
+        function updateTree() {
+            treeSvg.selectAll("*").remove();
+            root = d3.hierarchy(treeData);
+            let tree = treeLayout(root);
+
+            let links = treeSvg.selectAll(".link")
+                .data(tree.links())
+                .enter().append("line")
+                .attr("class", "link")
+                .attr("x1", d => d.source.x + 50)
+                .attr("y1", d => d.source.y + 50)
+                .attr("x2", d => d.target.x + 50)
+                .attr("y2", d => d.target.y + 50);
+
+            let nodes = treeSvg.selectAll(".node")
+                .data(tree.descendants())
+                .enter().append("g")
+                .attr("class", "node")
+                .attr("transform", d => `translate(${d.x + 50},${d.y + 50})`);
+
+            nodes.append("circle")
+                .attr("r", 30);
+
+            nodes.append("text")
+                .attr("text-anchor", "middle")
+                .selectAll("tspan")
+                .data(d => d.data.name.split("\n"))  
+                .enter()
+                .append("tspan")
+                .attr("x", 0)
+                .attr("dy", (d, i) => i === 0 ? 0 : 15)
+                .text(d => d);
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            document.querySelector("button").addEventListener("click", startDLS);
+        });
+
+        updateTree();
+    </script>
+
+</body>
+</html>
